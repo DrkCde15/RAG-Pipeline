@@ -1,0 +1,2 @@
+# Dependências do projeto são instaladas pelo docker/airflow/Dockerfile.
+# A instalação respeita as constraints oficiais do Airflow 2.10.5 / Python 3.12.
