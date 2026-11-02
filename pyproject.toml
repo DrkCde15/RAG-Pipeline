@@ -37,3 +37,4 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 addopts = "-q"
 markers = ["integration: testes que dependem de serviços externos"]
+pythonpath = ["."]

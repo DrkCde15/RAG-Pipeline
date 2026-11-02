@@ -1,6 +1,6 @@
 # RAG Pipeline — Engenharia de Dados e IA Generativa
 
-Pipeline local de Retrieval-Augmented Generation (RAG): ingere PDF, TXT e Markdown, indexa chunks e embeddings no Qdrant e responde perguntas com contexto recuperado usando Ollama. A API é feita com FastAPI; o Airflow coordena a ingestão recorrente. Os serviços podem ser executados sem serviços pagos ou GPU.
+Pipeline local de Retrieval-Augmented Generation (RAG): ingere PDF, TXT e Markdown, indexa chunks e embeddings no Qdrant e responde perguntas com contexto recuperado usando Ollama. A API é feita com FastAPI, a interface interativa usa Streamlit e o Airflow coordena a ingestão recorrente. Os serviços podem ser executados sem serviços pagos ou GPU.
 
 ## Arquitetura
 
@@ -13,6 +13,8 @@ flowchart LR
     Load --> Embeddings[Sentence Transformers<br/>CPU local]
     Embeddings --> Qdrant[(Qdrant)]
     User[Cliente REST] --> API
+    User --> UI[Interface Streamlit]
+    UI --> API
     API --> Retrieval[Busca semântica + filtro de score]
     Retrieval --> Qdrant
     Retrieval --> Prompt[Contexto com fontes]
@@ -33,7 +35,7 @@ O identificador do documento deriva do caminho absoluto do arquivo. Mover ou ren
 
 ## Tecnologias
 
-Python 3.12, FastAPI, Pydantic, Sentence Transformers (`all-MiniLM-L6-v2`, 384 dimensões), PyMuPDF, Qdrant, Ollama (`llama3.2:1b`), Apache Airflow 2.10.5, pytest, Ruff, pre-commit e Docker/Podman Compose. Dependências Python e imagens de infraestrutura estão fixadas no projeto.
+Python 3.12, FastAPI, Streamlit, Pydantic, Sentence Transformers (`all-MiniLM-L6-v2`, 384 dimensões), PyMuPDF, Qdrant, Ollama (`qwen2.5:0.5b`), Apache Airflow 2.10.5, pytest, Ruff, pre-commit e Docker/Podman Compose. Dependências Python e imagens de infraestrutura estão fixadas no projeto.
 
 ## Pré-requisitos
 
@@ -51,7 +53,7 @@ cp .env.example .env
 # Edite .env, altere a senha local do Airflow e ajuste AIRFLOW_UID para `id -u`.
 docker compose up --build -d
 docker compose ps
-docker compose exec ollama ollama pull llama3.2:1b
+docker compose exec ollama ollama pull qwen2.5:0.5b
 ```
 
 O serviço baixa os pesos do embedding model do Hugging Face no primeiro uso. Ollama e o cache de embeddings persistem em volumes.
@@ -65,7 +67,7 @@ cp .env.example .env
 # Edite .env, altere AIRFLOW_ADMIN_PASSWORD e ajuste AIRFLOW_UID para `id -u`.
 podman-compose up --build -d
 podman-compose ps
-podman-compose exec ollama ollama pull llama3.2:1b
+podman-compose exec ollama ollama pull qwen2.5:0.5b
 ```
 
 `podman-compose config` valida a configuração resolvida. O comportamento de `depends_on` com condição de conclusão pode variar entre versões de Compose; se sua versão não suportar `service_completed_successfully`, atualize Podman Compose ou inicialize o banco Airflow manualmente com o comando `airflow db migrate` no container `airflow-init` antes de iniciar scheduler e webserver.
@@ -106,6 +108,16 @@ A API limita uploads a 50 MiB. A ingestão recursiva ignora extensões não supo
 - `GET /documents` — documentos indexados e contagem de chunks.
 - `DELETE /documents/{document_id}` — exclui documento e chunks.
 - `POST /chat` — pergunta com resposta, fontes, scores e tempo de processamento.
+
+## Interface Streamlit
+
+Com os serviços iniciados pelo Compose, abra <http://localhost:8501>. A interface chama a API FastAPI existente e oferece:
+
+- **Ingestão:** envie PDF, TXT ou Markdown (até 50 MiB) e veja a contagem de chunks e o ID do documento.
+- **Chat:** faça perguntas e consulte a resposta, o tempo de processamento e as fontes com página, score e trecho.
+- **Documentos:** veja os documentos indexados e remova um documento e seus chunks.
+
+A porta pode ser alterada com `STREAMLIT_PORT`. O serviço Streamlit usa `API_BASE_URL=http://api:8000` na rede interna do Compose; a API continua disponível em `http://localhost:8000/docs`.
 
 Exemplos:
 
@@ -149,7 +161,7 @@ Consulte `.env.example`. Principais parâmetros:
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `QDRANT_URL` / `QDRANT_COLLECTION` | localhost / `rag_documents` | Endereço e collection Qdrant |
-| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | localhost / `llama3.2:1b` | Endpoint e modelo de geração |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | localhost / `qwen2.5:0.5b` | Endpoint e modelo de geração |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Modelo local de embeddings |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `800` / `120` | Tamanho em caracteres e sobreposição |
 | `TOP_K` / `MIN_SCORE` | `5` / `0.25` | Limite de recuperação e score mínimo |
@@ -168,7 +180,7 @@ Logs incluem timestamp, nível e logger; Airflow registra cada etapa e possui re
 - **Primeira pergunta lenta:** os pesos de embeddings e o modelo Ollama precisam ser baixados inicialmente; aguarde o download.
 - **Collection com dimensão incompatível:** altere `QDRANT_COLLECTION` ou faça backup e recrie a collection para o modelo atual.
 - **Airflow não inicia:** confira permissões do diretório de dados, usuário `AIRFLOW_UID` e suporte da versão Compose para dependências por condição.
-- **Pouca memória:** reduza `AIRFLOW_PARALLELISM=1`, use o modelo Ollama `llama3.2:1b` e ingira em lotes menores.
+- **Pouca memória:** reduza `AIRFLOW_PARALLELISM=1`, use o modelo Ollama `qwen2.5:0.5b` e ingira em lotes menores.
 - **PDF sem conteúdo:** PDFs escaneados precisam de OCR, que não está incluído.
 
 ## Limitações conhecidas e roadmap
